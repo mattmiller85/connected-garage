@@ -1,0 +1,8 @@
+consume_queue_url = "https://sqs.us-east-2.amazonaws.com/609487005418/connected-garage-consume"
+produce_queue_url = "https://sqs.us-east-2.amazonaws.com/609487005418/connected-garage-produce"
+
+aws_credentials_path = "/Users/matt/.aws/credentials"
+aws_profile_name = "connected-garage"
+
+# aws_credentials_path = "/home/pi/.aws/credentials"
+# aws_profile_name = "cbus-campio-2020"

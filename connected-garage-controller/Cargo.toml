@@ -1,0 +1,19 @@
+[package]
+name = "connected-garage-controller"
+version = "0.1.0"
+authors = ["Matt Miller <matt.miller@centricconsulting.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[build]
+target="armv7-unknown-linux-gnueabihf"
+
+[dependencies]
+rouille = "3.0.0"
+rppal = "0.11.3"
+fstrings = "0.2.3"
+serde = { version = "1.0.116", features = ["derive"] }
+serde_json = "1.0.57"
+config = "0.10.1"
