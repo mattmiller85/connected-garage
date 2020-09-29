@@ -64,6 +64,14 @@ fn start_api(app_settings: &HashMap<String, String>) {
           }
           rouille::Response::empty_204()
         },
+        (GET) (/door/{which_door: String}/status) => {
+
+          println!("{}" , which_door);
+          let is_open = is_door_open(which_door);
+          rouille::Response::json(&json!({
+            "is_open": is_open
+          }))
+        },
         _ => rouille::Response::empty_404()
       )
     })
@@ -106,10 +114,22 @@ fn open_door(pin: u8) {
   the_pin.set_low();
 }
 
-fn is_door_open() -> bool {
+fn is_door_open(which_door: String) -> bool {
  
-  let mut trigger_pin = Gpio::new().unwrap().get(LD_TRIGGER_PIN).unwrap().into_output();
-  let echo_pin = Gpio::new().unwrap().get(LD_ECHO_PIN).unwrap().into_input();
+  let mut trigger_pin_num = LD_TRIGGER_PIN;
+  let mut echo_pin_num = LD_ECHO_PIN;
+  
+  match which_door.as_str() {
+    "left" => {
+      trigger_pin_num = LD_TRIGGER_PIN;
+      echo_pin_num = LD_ECHO_PIN;
+    },
+    _ => println!(
+        "What door??"
+      )
+  }
+  let mut trigger_pin = Gpio::new().unwrap().get(trigger_pin_num).unwrap().into_output();
+  let echo_pin = Gpio::new().unwrap().get(echo_pin_num).unwrap().into_input();
   trigger_pin.set_low();
   thread::sleep(Duration::from_millis(250));
   // take the average of 5 distance readings
@@ -134,6 +154,7 @@ fn is_door_open() -> bool {
     // 34300 cm/s
     // 17150 = one way
     avg_distance += pulse_duration * 17150.0; 
+    println!("{}" , avg_distance);
     thread::sleep(Duration::from_millis(10));
   }
   distance_cm = avg_distance / 5.0;
