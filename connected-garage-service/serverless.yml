@@ -1,0 +1,120 @@
+service: connected-garage-service
+
+#development plugins
+plugins:
+  - serverless-plugin-typescript
+  - serverless-offline
+  
+provider:
+  name: aws
+  runtime: nodejs12.x
+  region: us-east-2
+  profile: connected-garage
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+       - dynamodb:Query
+       - dynamodb:Scan
+       - dynamodb:GetItem
+       - dynamodb:PutItem
+       - dynamodb:UpdateItem
+       - dynamodb:DeleteItem
+      Resource: 
+         Fn::GetAtt:
+          - doorHistoryTable
+          - Arn
+    - Effect: "Allow"
+      Action:
+        - "sqs:SendMessage"
+        - "sqs:GetQueueUrl"
+      Resource: 
+         Fn::GetAtt:
+          - ConnectedGarageConsume
+          - Arn
+    - Effect: "Allow"
+      Action:
+        - "sqs:GetQueueUrl"
+        - "sqs:ReceiveMessage"
+      Resource: 
+         Fn::GetAtt:
+          - ConnectedGarageProduce
+          - Arn
+  environment:
+    CONFIG_DOORHISTORY_TABLE: doorHistoryTable
+    CONFIG_SQS_ENDPOINT:
+      Ref: ConnectedGarageConsume
+
+resources: # CloudFormation template syntax from here on.
+  Resources:
+    doorHistoryTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.CONFIG_DOORHISTORY_TABLE}
+        AttributeDefinitions:
+          - AttributeName: doorPosition
+            AttributeType: S
+          - AttributeName: received
+            AttributeType: N
+        KeySchema:
+          - AttributeName: doorPosition
+            KeyType: HASH
+          - AttributeName: received
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    ConnectedGarageConsume:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: connected-garage-consume
+    ConnectedGarageProduce:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: connected-garage-produce
+
+functions:
+  handleDoorMessage:
+    handler: handler.handleDoorMessage
+    events:
+      - sqs: 
+          arn:
+            Fn::GetAtt:
+              - ConnectedGarageProduce
+              - Arn
+
+  sendDoorMessage:
+    handler: handler.sendDoorMessage
+    events:
+      - http:
+          method: post
+          path: /message
+          cors: true
+          # authorizer:
+          #   arn: arn:aws:cognito-idp:us-east-2:609487005418:userpool/us-east-2_nZIkT2Dub
+  
+  getDoorStatus:
+    handler: handler.getDoorStatus
+    events:
+      - http:
+          method: get
+          path: /status/{which_door}
+          cors: true
+          request:
+            parameters:
+              paths:
+                which_door: true
+          
+  getDoorHistory:
+    handler: handler.getDoorHistory
+    events:
+      - http:
+          method: get
+          path: /history/{limit}
+          cors: true
+          # authorizer:
+          #   arn: arn:aws:cognito-idp:us-east-2:609487005418:userpool/us-east-2_nZIkT2Dub
+          request:
+            parameters:
+              paths:
+                limit: true
