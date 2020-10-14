@@ -23,36 +23,22 @@ import {
 } from 'react-native/Libraries/NewAppScreen';
 
 
-const openClose = async () => {
-  await fetch('http://retropie.local/toggle', {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      which_door: 'left'
-    })
-  });
-}
-
 const Header: () => React$Node = () => {
   return (
-    <>
+    <ScrollView>
       <StatusBar barStyle="dark-content" />
       <SafeAreaView>
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"
           style={styles.scrollView}>
-          <Header />
           <View style={styles.body}>
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Header</Text>
             </View>
           </View>
         </ScrollView>
-      </SafeAreaView>
-    </>
+      </SafeAreaView> 
+    </ScrollView>
   );
 };
 

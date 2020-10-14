@@ -1,5 +1,7 @@
 service: connected-garage-service
 
+enableLocalInstallationFallback: true
+
 #development plugins
 plugins:
   - serverless-plugin-typescript
@@ -25,6 +27,18 @@ provider:
           - Arn
     - Effect: "Allow"
       Action:
+       - dynamodb:Query
+       - dynamodb:Scan
+       - dynamodb:GetItem
+       - dynamodb:PutItem
+       - dynamodb:UpdateItem
+       - dynamodb:DeleteItem
+      Resource: 
+         Fn::GetAtt:
+          - doorState
+          - Arn
+    - Effect: "Allow"
+      Action:
         - "sqs:SendMessage"
         - "sqs:GetQueueUrl"
       Resource: 
@@ -41,6 +55,8 @@ provider:
           - Arn
   environment:
     CONFIG_DOORHISTORY_TABLE: doorHistoryTable
+    CONFIG_DOORSTATE_TABLE: doorState
+    CONFIG_MY_BUILDING: 5447bb99-4bef-4a27-86e3-f2cd6b0b98b0
     CONFIG_SQS_ENDPOINT:
       Ref: ConnectedGarageConsume
 
@@ -60,6 +76,20 @@ resources: # CloudFormation template syntax from here on.
             KeyType: HASH
           - AttributeName: received
             KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    doorState:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.CONFIG_DOORSTATE_TABLE}
+        AttributeDefinitions:
+          - AttributeName: buildingId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: buildingId
+            KeyType: HASH
         ProvisionedThroughput:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
@@ -88,22 +118,26 @@ functions:
     events:
       - http:
           method: post
-          path: /message
-          cors: true
-          # authorizer:
-          #   arn: arn:aws:cognito-idp:us-east-2:609487005418:userpool/us-east-2_nZIkT2Dub
-  
-  getDoorStatus:
-    handler: handler.getDoorStatus
-    events:
-      - http:
-          method: get
-          path: /status/{which_door}
+          path: /message/{buildingId}
           cors: true
           request:
             parameters:
               paths:
-                which_door: true
+                buildingId: true
+          # authorizer:
+          #   arn: arn:aws:cognito-idp:us-east-2:609487005418:userpool/us-east-2_nZIkT2Dub
+  
+  getDoorStatus:
+    handler: handler.getDoorState
+    events:
+      - http:
+          method: get
+          path: /status/{buildingId}
+          cors: true
+          request:
+            parameters:
+              paths:
+                buildingId: true
           
   getDoorHistory:
     handler: handler.getDoorHistory

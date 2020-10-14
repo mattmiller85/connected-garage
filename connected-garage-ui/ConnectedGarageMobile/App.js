@@ -1,83 +1,116 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- * @flow strict-local
- */
 
 import React from 'react';
 import {
-  SafeAreaView,
   StyleSheet,
-  ScrollView,
   View,
   Text,
-  StatusBar,
-  Button
+  Image,
+  TouchableOpacity
 } from 'react-native';
 
 import {
-  //Header,
   Colors
 } from 'react-native/Libraries/NewAppScreen';
 
-import {
-  Header
-} from './Header'
+const apiPrefix = 'https://vft02b5v9c.execute-api.us-east-2.amazonaws.com/dev'
 
-const openClose = async () => {
-  await fetch('http://retropie.local/toggle', {
+const openClose = async (which_door) => {
+  await fetch(`${apiPrefix}/message/5447bb99-4bef-4a27-86e3-f2cd6b0b98b0`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      which_door: 'left'
-    })
+      message_type: 'toggle',
+      payload: { which_door }
+    }) 
   });
+  console.log('Toggling door.');
 }
 
-const App: () => React$Node = () => {
-  return (
-    <>
-      <StatusBar barStyle="dark-content" />
-      <SafeAreaView>
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          style={styles.scrollView}>
-          <Header />
-          <View style={styles.body}>
-            <View style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>Step One</Text>
-              <Text style={styles.sectionDescription}>
-                Edit <Text style={styles.highlight}>App.js</Text> to change this
-                screen and then come back to see your edits.
-              </Text>
-              <Button title="Open/Close" onPress={async () => await openClose() }></Button>
+class App extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      doorState: {}
+    };
+  }
+
+  async getStatus() {
+    const response = await fetch(`${apiPrefix}/status/5447bb99-4bef-4a27-86e3-f2cd6b0b98b0`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json'
+      }
+    });
+    // const payload = await response.json();
+    const payload = { left: { is_open: true } };
+    return payload;
+  }
+
+  async componentDidMount() {
+    this.setState({ doorState: await this.getStatus() });
+  }
+
+  render() {
+    
+    const { doorState } = this.state;
+
+    return (
+      <View
+            contentInsetAdjustmentBehavior="automatic"  
+            style={styles.container}>
+        <View style={styles.body}>
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Connected Garage</Text>
+            <View style={{ ...styles.sectionContainer, flex: 1, flexDirection: 'row', flexShrink: 1, flexWrap: 1 }}>
+              <TouchableOpacity onPressOut={async () => await openClose('left') }>
+                <Image style={{ width: 100, height: 100, marginRight: 5 }} source={require('./images/door-1.png')}></Image>
+                <Text>{doorState.left?.is_open ? 'open': 'closed'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPressOut={async () => await openClose('middle') }>
+                <Image style={{ width: 100, height: 100, marginRight: 5 }} source={require('./images/door-1.png')}></Image>
+              </TouchableOpacity>
+              <TouchableOpacity onPressOut={async () => await openClose('right') }>
+                <Image style={{ width: 100, height: 100 }} source={require('./images/door-1.png')}></Image>
+                
+              </TouchableOpacity>
             </View>
           </View>
-        </ScrollView>
-      </SafeAreaView>
-    </>
-  );
-};
+        </View>
+        <View style={styles.console}>
+          
+        </View>
+      </View>
+    );
+  }
+}
 
 const styles = StyleSheet.create({
-  scrollView: {
+  container: {
     backgroundColor: Colors.lighter,
+    flex: 1,
+    alignItems: "center"
   },
   engine: {
     position: 'absolute',
     right: 0,
   },
   body: {
-    backgroundColor: Colors.white,
+    flex: 1
+  },
+  console: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    color: Colors.darker,
+    marginBottom: 36,
+    height: 30
   },
   sectionContainer: {
     marginTop: 32,
-    paddingHorizontal: 24,
+    paddingHorizontal: 24
   },
   sectionTitle: {
     fontSize: 24,
