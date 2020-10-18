@@ -1,5 +1,5 @@
 import { APIGatewayEventRequestContext, APIGatewayProxyEvent, SQSEvent } from 'aws-lambda';
-import { DynamoDB, SQS } from 'aws-sdk';
+import { DynamoDB, SQS, ApiGatewayManagementApi } from 'aws-sdk';
 
 export async function getDoorState(event: APIGatewayProxyEvent,
   context: APIGatewayEventRequestContext) {
@@ -55,6 +55,22 @@ export async function sendDoorMessage(event: APIGatewayProxyEvent,
   return response;
 }
 
+async function sendMessageToSocketConnection(connection: string, message: any) {
+  const socketEndpoint = new ApiGatewayManagementApi({
+    endpoint: process.env.WEBSOCKET_ENDPOINT
+  });
+
+  // tslint:disable-next-line: no-console
+  console.log(`Sending update to connection: ${connection}`);
+  // tslint:disable-next-line: no-console
+  console.log(`payload: ${JSON.stringify(message, null, 1)}`);
+  await socketEndpoint.postToConnection(
+    {
+      ConnectionId: connection, // connectionId of the receiving ws-client
+      Data: JSON.stringify(message),
+    }).promise();
+}
+
 export async function handleDoorMessage(event: SQSEvent) {
 
   const ddb = new DynamoDB.DocumentClient();
@@ -67,6 +83,9 @@ export async function handleDoorMessage(event: SQSEvent) {
           TableName: process.env.CONFIG_DOORSTATE_TABLE,
           Item: { buildingId: body.building_id, ...body.payload },
         }).promise();
+        const connections = await ddb.scan({ TableName: process.env.CONFIG_WEBSOCKET_CONNECTION_TABLE }).promise()
+        await Promise.all(connections.Items.map((conn) => sendMessageToSocketConnection(conn.connectionId, body)));
+        break;
       default:
         // tslint:disable-next-line:no-console
         console.log('Unknown message type.');
@@ -78,4 +97,31 @@ export async function handleDoorMessage(event: SQSEvent) {
   };
 
   return response;
+}
+
+export async function connectionHandler(event, context) {
+  const { requestContext: { routeKey } } = event;
+  const ddb = new DynamoDB.DocumentClient();
+  switch (routeKey) {
+    case '$connect':
+      await ddb.put({
+        TableName: process.env.CONFIG_WEBSOCKET_CONNECTION_TABLE,
+        Item: {
+          connectionId: event.requestContext.connectionId,
+          // tslint:disable-next-line: radix
+          ttl: parseInt(((Date.now() / 1000) + 3600).toFixed(0)) // how often to expire?
+        }
+      }).promise();
+      break;
+
+    case '$disconnect':
+      await ddb.delete({
+        TableName: process.env.CONFIG_WEBSOCKET_CONNECTION_TABLE,
+        Key: { connectionId: event.requestContext.connectionId }
+      }).promise();
+      break;
+    default:
+      break;
+  }
+  return { statusCode: 200 };
 }

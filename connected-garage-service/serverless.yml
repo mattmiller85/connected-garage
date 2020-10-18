@@ -12,6 +12,8 @@ provider:
   runtime: nodejs12.x
   region: us-east-2
   profile: connected-garage
+  websocketsApiName: 'connected-garage-sockets-api'
+  websocketsApiRouteSelectionExpression: $request.body.action
   iamRoleStatements:
     - Effect: "Allow"
       Action:
@@ -39,6 +41,18 @@ provider:
           - Arn
     - Effect: "Allow"
       Action:
+       - dynamodb:Query
+       - dynamodb:Scan
+       - dynamodb:GetItem
+       - dynamodb:PutItem
+       - dynamodb:UpdateItem
+       - dynamodb:DeleteItem
+      Resource: 
+         Fn::GetAtt:
+          - doorSocketConnections
+          - Arn
+    - Effect: "Allow"
+      Action:
         - "sqs:SendMessage"
         - "sqs:GetQueueUrl"
       Resource: 
@@ -56,6 +70,7 @@ provider:
   environment:
     CONFIG_DOORHISTORY_TABLE: doorHistoryTable
     CONFIG_DOORSTATE_TABLE: doorState
+    CONFIG_WEBSOCKET_CONNECTION_TABLE: doorSocketConnections
     CONFIG_MY_BUILDING: 5447bb99-4bef-4a27-86e3-f2cd6b0b98b0
     CONFIG_SQS_ENDPOINT:
       Ref: ConnectedGarageConsume
@@ -89,6 +104,20 @@ resources: # CloudFormation template syntax from here on.
             AttributeType: S
         KeySchema:
           - AttributeName: buildingId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    doorSocketConnections:      
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.CONFIG_WEBSOCKET_CONNECTION_TABLE}
+        AttributeDefinitions:
+          - AttributeName: connectionId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: connectionId
             KeyType: HASH
         ProvisionedThroughput:
           ReadCapacityUnits: 1
@@ -152,3 +181,11 @@ functions:
             parameters:
               paths:
                 limit: true
+
+  connectionHandler:
+    handler: handler.connectionHandler
+    events:
+      - websocket:
+          route: $connect
+      - websocket:
+          route: $disconnect 

@@ -1,26 +1,20 @@
 #[macro_use]
 extern crate rouille;
-
-#[macro_use]
 extern crate fstrings;
 
 #[macro_use]
 extern crate serde_json;
 
-#[macro_use]
 extern crate serde;
-
-#[macro_use]
 extern crate tokio;
 
-use serde::{Deserialize};
+use serde::Deserialize;
 
 use rppal::gpio::Gpio;
 use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 use std::thread;
-use std::error::Error;
 use std::time::{Duration, Instant};
 
 use std::panic;
@@ -78,38 +72,37 @@ fn get_pin_metadata() -> HashMap<String, PinMetaData>{
   });
   pin_meta_data
 }
-const httpClient: HttpClient = HttpClient::new().unwrap();
-static app_settings: &'static HashMap<String, String> = &get_app_settings();
-static client: &'static SqsClient = &SqsClient::new_with(httpClient, get_aws_profile(), Region::UsEast2);
+
+
 
 #[tokio::main]
 async fn main() {
-  let building_id = "5447bb99-4bef-4a27-86e3-f2cd6b0b98b0";
+  // let building_id = "5447bb99-4bef-4a27-86e3-f2cd6b0b98b0";
 
-  
+  let app_settings = &get_app_settings();
+  let client = Box::from(SqsClient::new_with(HttpClient::new().unwrap(), get_aws_profile(), Region::UsEast2));
+
   // Print out our settings (as a HashMap)
   println!("settings - {:?}", app_settings);
-  let pin_metadata: &'static HashMap<String, PinMetaData> = &get_pin_metadata();
 
   thread::spawn( || {
     start_api();
   });
   
-  
-  
   let q_url = app_settings.get("consume_queue_url").unwrap();
-  let q_produce_url = app_settings.get("produce_queue_url").unwrap();
+  let q_produce_url = app_settings.get("produce_queue_url").unwrap().clone();
+  let q_produce_url_string = q_produce_url.to_string();
   println!("Listening for messages on {}", q_url);
-  println!("Sending messages to f{}", q_produce_url);
-
-  thread::spawn( || {
+  let cloned_client = client.clone();
+  tokio::spawn(async move { 
     loop {
-      send_door_state(q_produce_url.to_string().clone(), DoorReq { which_door: "none".to_string() }, &pin_metadata);
-      std::thread::sleep(Duration::from_secs(60));
+      send_door_state(cloned_client.clone(),q_produce_url_string.to_string(), DoorReq { which_door: "none".to_string() }).await;
+      tokio::time::delay_for(tokio::time::Duration::from_secs(60)).await;
     }
   });
 
   loop {
+    println!("Looking for messages on {}", q_url);
     match client.receive_message(ReceiveMessageRequest {
       queue_url: q_url.to_string(),
       ..Default::default()
@@ -122,18 +115,27 @@ async fn main() {
             println!("Got json {}", jsonmessage);
             let payload: DoorReq = serde_json::from_value(jsonmessage["body"].get("payload").unwrap().clone()).unwrap();
             match jsonmessage["body"]["message_type"].as_str() {
-              Some("toggle") => open_door(payload, &pin_metadata),
-              Some("open") => try_open(payload, &pin_metadata),
-              Some("close") => try_close(payload, &pin_metadata),
+              Some("toggle") => {
+                open_door(payload);
+                std::thread::sleep(Duration::from_secs(15));
+                send_door_state(client.clone(), q_produce_url.to_string(), DoorReq { which_door: "none".to_string() }).await;
+              },
+              Some("open") => try_open(payload),
+              Some("close") => try_close(payload),
               Some("status") => {
-                  send_door_state(q_produce_url.to_string(), payload, &pin_metadata);
+
+                  let q_produce_url = app_settings.get("produce_queue_url").unwrap();
+                  send_door_state(client.clone(), q_produce_url.to_string(), payload).await;
                 },
                 _ => println!("Wat?")
               }
-              client.delete_message(DeleteMessageRequest {
+              match client.clone().delete_message(DeleteMessageRequest {
                 queue_url: q_url.to_string(),
                 receipt_handle: m.receipt_handle.as_ref().unwrap().to_string()
-              }).await;
+              }).await {
+                Ok(_r) => println!("Completed message"),
+                Err(e) => println!("Error completing message {}", e)
+              }
 
           }
         },
@@ -141,27 +143,25 @@ async fn main() {
       },
       Err(e) => println!("Error checking for messages {}", e)
     }
-    println!("Checking for messages");
     std::thread::sleep(Duration::from_secs(1));
   }
-  ()
 }
 
-fn send_door_state(queue_url: String, payload: DoorReq, pin_metadata: &HashMap<String, PinMetaData>) {
-  client.send_message(SendMessageRequest {
+async fn send_door_state(client: Box<SqsClient>, queue_url: String, _payload: DoorReq) {
+  match client.send_message(SendMessageRequest {
     queue_url,
     message_body: String::from(&json!({ 
       "message_type": "door_status",
       "building_id":  "5447bb99-4bef-4a27-86e3-f2cd6b0b98b0",
       "payload": {
         "left": {
-          "is_open": try_get_status(DoorReq { which_door: "left".to_string() }, &pin_metadata)
+          "is_open": try_get_status(DoorReq { which_door: "left".to_string() })
         },
         "middle": {
-          "is_open": try_get_status(DoorReq { which_door: "middle".to_string() }, &pin_metadata)
+          "is_open": try_get_status(DoorReq { which_door: "middle".to_string() })
         },
         "right": {
-          "is_open": try_get_status(DoorReq { which_door: "right".to_string() }, &pin_metadata)
+          "is_open": try_get_status(DoorReq { which_door: "right".to_string() })
         }
       }
     }).to_string()),
@@ -170,20 +170,29 @@ fn send_door_state(queue_url: String, payload: DoorReq, pin_metadata: &HashMap<S
     message_deduplication_id: None,
     message_group_id: None,
     message_system_attributes: None
-  });
+  }).await {
+    Ok(_r) => println!("Sent door state."),
+    Err(e) => println!("Error sending door state {}", e)
+  }
 }
 
 fn get_aws_profile() -> rusoto_core::credential::ProfileProvider {
   //rusoto_core::credential::ProfileProvider::with_configuration("/home/pi/.aws/credentials", "cbus-campio-2020")
+  let app_settings = get_app_settings();
   let credentials = app_settings.get("aws_credentials_path").unwrap();
   let profile = app_settings.get("aws_profile_name").unwrap();
   rusoto_core::credential::ProfileProvider::with_configuration(credentials, profile)
 }
 
 fn start_api() {
-  let pin_metadata = get_pin_metadata();
+  let app_settings = get_app_settings();
   let default_address = &"0.0.0.0:80".to_string();
   let listenon = app_settings.get("listenon").unwrap_or(default_address);
+
+  println!(
+    "Running connected garage controller on address {listenon}",
+    listenon = listenon
+  );
 
   rouille::start_server(listenon, move |request| {
     
@@ -192,13 +201,13 @@ fn start_api() {
       router!(request,
         (POST) (/toggle) => {
           let request_body: DoorReq = try_or_400!(rouille::input::json_input(request));
-          open_door(request_body, &pin_metadata);
+          open_door(request_body);
           rouille::Response::empty_204()
         },
         (GET) (/door/{which_door: String}/status) => {
 
           println!("{}" , which_door);
-          let is_open = is_door_open(which_door, &pin_metadata);
+          let is_open = is_door_open(which_door);
           rouille::Response::json(&json!({
             "is_open": is_open
           }))
@@ -207,47 +216,38 @@ fn start_api() {
       )
     })
   });
-
-  println!(
-    "Running connected garage controller on address {listenon}",
-    listenon = listenon
-  )
 }
 
-const fn get_app_settings() -> HashMap<String, String> {
+fn get_app_settings() -> HashMap<String, String> {
   let mut settings = config::Config::default();
 
-  let localFile = panic::catch_unwind(|| config::File::with_name("AppSettings"));
-  let deployedFile = panic::catch_unwind(|| {
+  let deployed_file = panic::catch_unwind(|| {
     config::File::from(Path::new("/home/pi/connected-garage/AppSettings.toml"))
   });
-  
-  if deployedFile.is_ok() {
-    settings.merge(deployedFile.unwrap());
-  }
 
-  if localFile.is_ok() {
-    settings.merge(localFile.unwrap());
+  match deployed_file {
+    Ok(f) => { settings.merge(f).unwrap(); () },
+    Err(_e) => println!("Error reading settings")
   }
-
+ 
   settings.try_into::<HashMap<String, String>>().unwrap()
 }
 
-fn try_open(request: DoorReq, pin_metadata: &HashMap<String, PinMetaData>) {
-
-  if is_door_open(request.clone().which_door, pin_metadata) == false {
-    open_door(request, pin_metadata);
+fn try_open(request: DoorReq) {
+  if is_door_open(request.clone().which_door) == false {
+    open_door(request);
   }
 }
 
-fn try_close(request: DoorReq, pin_metadata: &HashMap<String, PinMetaData>) {
-  if is_door_open(request.clone().which_door, pin_metadata) {
-    open_door(request, pin_metadata);
+fn try_close(request: DoorReq) {
+  if is_door_open(request.clone().which_door) {
+    open_door(request);
   }
 }
 
-fn open_door(request: DoorReq, pin_metadata: &HashMap<String, PinMetaData>) {
-  let mut pins = pin_metadata.get(&request.which_door).unwrap();
+fn open_door(request: DoorReq) {
+  let pin_metadata = get_pin_metadata();
+  let pins = pin_metadata.get(&request.which_door).unwrap();
 
   println!("Pressing {} door button using pin {}" , &request.which_door, pins.door_pin);
   let mut the_pin = Gpio::new()
@@ -261,24 +261,23 @@ fn open_door(request: DoorReq, pin_metadata: &HashMap<String, PinMetaData>) {
   the_pin.set_low();
 }
 
-fn try_get_status(request: DoorReq, pin_metadata: &HashMap<String, PinMetaData>) -> bool {
-  is_door_open(request.which_door, pin_metadata)
+fn try_get_status(request: DoorReq) -> bool {
+  is_door_open(request.which_door)
 }
 
-fn is_door_open(which_door: String, pin_metadata: &HashMap<String, PinMetaData>) -> bool {
+fn is_door_open(which_door: String) -> bool {
  
-  
-  let mut pins = pin_metadata.get(&which_door).unwrap();
-  let mut trigger_pin_num = pins.status_trigger_pin;
-  let mut echo_pin_num = pins.status_echo_pin;
+  let pin_metadata = get_pin_metadata();
+
+  let pins = pin_metadata.get(&which_door).unwrap();
+  let trigger_pin_num = pins.status_trigger_pin;
+  let echo_pin_num = pins.status_echo_pin;
   
   let mut trigger_pin = Gpio::new().unwrap().get(trigger_pin_num).unwrap().into_output();
   let echo_pin = Gpio::new().unwrap().get(echo_pin_num).unwrap().into_input();
   trigger_pin.set_low();
   thread::sleep(Duration::from_millis(250));
   // take the average of 5 distance readings
-  let mut distance_cm = 500.0;
-  let mut is_open = true;
 
   let mut avg_distance = 0.0;
 
@@ -286,7 +285,7 @@ fn is_door_open(which_door: String, pin_metadata: &HashMap<String, PinMetaData>)
     trigger_pin.set_high();
     thread::sleep(Duration::from_micros(10));
     trigger_pin.set_low();
-    let mut pulse_start = Instant::now();
+    let pulse_start = Instant::now();
     let mut pulse_duration = 0.0;
     let timeoutseconds: f32 = 5.0;
     while echo_pin.is_low() {
@@ -306,7 +305,7 @@ fn is_door_open(which_door: String, pin_metadata: &HashMap<String, PinMetaData>)
     thread::sleep(Duration::from_millis(10));
   }
   
-  distance_cm = avg_distance / 20.0;
+  let distance_cm = avg_distance / 20.0;
   println!("cm away: {}" , distance_cm);
 
   distance_cm > 12.0

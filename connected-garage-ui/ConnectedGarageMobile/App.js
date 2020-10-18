@@ -35,6 +35,7 @@ class App extends React.Component {
     this.state = {
       doorState: {}
     };
+    this.ws = new WebSocket('ws://host.com/path');
   }
 
   async getStatus() {
@@ -45,13 +46,33 @@ class App extends React.Component {
         'Content-Type': 'application/json'
       }
     });
-    // const payload = await response.json();
-    const payload = { left: { is_open: true } };
+    const payload = await response.json();
     return payload;
   }
 
   async componentDidMount() {
     this.setState({ doorState: await this.getStatus() });
+    this.ws.onopen = () => {
+     
+    };
+    
+    this.ws.onmessage = (e) => {
+      const message = JSON.parse(e.data)
+      if (message.message_type === 'door_status') {
+        this.setState({ doorState: message.payload });
+      }
+      console.log(e.data);
+    };
+    
+    this.ws.onerror = (e) => {
+      // an error occurred
+      // console.log(e.message);
+    };
+    
+    this.ws.onclose = (e) => {
+      // connection closed
+      // console.log(e.code, e.reason);
+    };
   }
 
   render() {
