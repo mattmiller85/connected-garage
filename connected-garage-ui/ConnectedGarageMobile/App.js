@@ -18,21 +18,6 @@ import { format } from 'date-fns'
 const apiPrefix = 'https://vft02b5v9c.execute-api.us-east-2.amazonaws.com/dev'
 const socketUrl = 'wss://870olo7mrh.execute-api.us-east-2.amazonaws.com/dev';
 
-const openClose = async (which_door) => {
-  await fetch(`${apiPrefix}/message/5447bb99-4bef-4a27-86e3-f2cd6b0b98b0`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      message_type: 'toggle',
-      payload: { which_door }
-    })
-  });
-  console.log('Toggling door.');
-}
-
 const closedIcon = require(`./images/door-closed.png`);
 const openIcon = require(`./images/door-open.png`);
 
@@ -43,6 +28,11 @@ class App extends React.Component {
       doorState: {},
       width: Dimensions.get('window').width,
       height: Dimensions.get('window').height,
+      buttonState: {
+        left: { disabled: false },
+        middle: { disabled: false },
+        right: { disabled: false }
+      }
     };
 
     this.onLayout = this.onLayout.bind(this);
@@ -53,6 +43,35 @@ class App extends React.Component {
     this.setState({
       width: Dimensions.get('window').width,
       height: Dimensions.get('window').height,
+    });
+  }
+
+  async openClose(which_door, event) {
+    await fetch(`${apiPrefix}/message/5447bb99-4bef-4a27-86e3-f2cd6b0b98b0`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message_type: 'toggle',
+        payload: { which_door }
+      })
+    });
+    const { buttonState, doorState } = this.state;
+    if (doorState[which_door].is_open) {
+      doorState[which_door].closing = true;
+      doorState[which_door].opening = false;
+    } else {
+      doorState[which_door].closing = false;
+      doorState[which_door].opening = true;
+    }
+    console.log('Toggling door.');
+
+    buttonState[which_door].disabled = true;
+    this.setState({
+      buttonState,
+      doorState
     });
   }
 
@@ -82,9 +101,24 @@ class App extends React.Component {
       console.log(JSON.stringify(e, undefined, 1));
       const message = JSON.parse(e.data)
 
+
+
       if (message.message_type === 'door_status') {
+        const doorState = message.payload;
+        const { buttonState } = this.state;
+
+        buttonState.left.disabled = false;
+        buttonState.right.disabled = false;
+        buttonState.middle.disabled = false;
+
         this.setState({
-          doorState: message.payload,
+          buttonState,
+          doorState
+        });
+
+        this.setState({
+          doorState,
+          buttonState,
           consoleMessage: `Updated door status: ${format(new Date(), 'MMMM do, yyyy H:mm')}`
         });
       }
@@ -104,14 +138,16 @@ class App extends React.Component {
 
   render() {
 
-    const { doorState, consoleMessage, width, height } = this.state;
+    const { doorState, buttonState, consoleMessage, width, height } = this.state;
 
     const leftIcon = doorState.left?.is_open ? openIcon : closedIcon;
     const middleIcon = doorState.middle?.is_open ? openIcon : closedIcon;
     const rightIcon = doorState.right?.is_open ? openIcon : closedIcon;
 
 
-    const doorStateLeftText = doorState.left?.is_open ? 'Opened' : 'Closed';
+    const doorStateLeftText = doorState.left?.opening ? 'Opening' :
+      doorState.left?.closing ? 'Closing' :
+        doorState.left?.is_open ? 'Opened' : 'Closed';
     const doorStateMiddleText = doorState.middle?.is_open ? 'Opened' : 'Closed';
     const doorStateRightText = doorState.right?.is_open ? 'Opened' : 'Closed';
 
@@ -120,25 +156,31 @@ class App extends React.Component {
       <View
         style={{ ...styles.container, width, height }}
         onLayout={this.onLayout}>
-        <View style={{...styles.sectionContainer }}>
+        <View style={{ ...styles.sectionContainer }}>
           <Text style={{ ...styles.sectionTitle }}>Connected Garage</Text>
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', flexDirection: width > height ? 'row' : 'column' }}>
-            <TouchableOpacity style={styles.doorbutton} onPressOut={async () => await openClose('left')}>
+          <View style={{ flex: 1, justifyContent: 'space-evenly', alignItems: 'center', flexDirection: width > height ? 'row' : 'column' }}>
+            <TouchableOpacity disabled={buttonState.left.disabled}
+              style={{ ...styles.doorbutton, opacity: buttonState.left.disabled ? 0.5 : 1 }}
+              onPressOut={async (e) => await this.openClose('left', e)}>
               <Image style={styles.doorbuttonimage} source={leftIcon}></Image>
-              <Text>{doorStateLeftText}</Text>
+              <Text>Left: {doorStateLeftText}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.doorbutton} onPressOut={async () => await openClose('middle')}>
+            <TouchableOpacity disabled={buttonState.middle.disabled}
+              style={{ ...styles.doorbutton, opacity: buttonState.middle.disabled ? 0.5 : 1 }}
+              onPressOut={async (e) => await this.openClose('middle', e)}>
               <Image style={styles.doorbuttonimage} source={middleIcon}></Image>
-              <Text>{doorStateMiddleText}</Text>
+              <Text>Middle: {doorStateMiddleText}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.doorbutton} onPressOut={async () => await openClose('right')}>
+            <TouchableOpacity disabled={buttonState.right.disabled}
+              style={{ ...styles.doorbutton, opacity: buttonState.right.disabled ? 0.5 : 1 }}
+              onPressOut={async (e) => await this.openClose('right', e)}>
               <Image style={styles.doorbuttonimage} source={rightIcon}></Image>
-              <Text>{doorStateRightText}</Text>
+              <Text>Right: {doorStateRightText}</Text>
             </TouchableOpacity>
           </View>
         </View>
-        <View style={{...styles.console }}>
-          <Text style={{ height: 30 }}>{consoleMessage || 'Ready'}</Text>
+        <View style={{ ...styles.console, width }}>
+          <Text style={{ height: 30, fontStyle: 'italic' }}>{consoleMessage || 'Ready'}</Text>
         </View>
       </View>
     );
@@ -147,8 +189,9 @@ class App extends React.Component {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.lighter,
-    flex: 1
+    backgroundColor: '#d1d1d1',
+    flex: 1,
+    alignItems: 'center'
   },
   engine: {
     position: 'absolute',
@@ -162,21 +205,23 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   console: {
-    color: Colors.darker,
-    marginBottom: 36,
-    height: 30,
-    padding: 10
+    backgroundColor: '#e1e1e1',
+    height: 50,
+    paddingTop: 5,
+    alignItems: 'center'
   },
   sectionContainer: {
     marginTop: 32,
-    paddingHorizontal: 24,
     flex: 1,
-    flexDirection: 'column'
+    flexDirection: 'column',
+    alignItems: 'center'
   },
   sectionTitle: {
-    fontSize: 24,
+    fontSize: 40,
     fontWeight: '600',
-    color: Colors.black
+    color: Colors.black,
+    alignItems: 'center',
+    marginTop: 20
   }
 });
 
