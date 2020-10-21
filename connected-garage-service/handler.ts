@@ -57,18 +57,22 @@ export async function sendDoorMessage(event: APIGatewayProxyEvent,
 
 async function sendMessageToSocketConnection(connection: string, message: any) {
   const socketEndpoint = new ApiGatewayManagementApi({
-    endpoint: process.env.WEBSOCKET_ENDPOINT
+    endpoint: 'https://870olo7mrh.execute-api.us-east-2.amazonaws.com/dev'
   });
 
   // tslint:disable-next-line: no-console
   console.log(`Sending update to connection: ${connection}`);
   // tslint:disable-next-line: no-console
   console.log(`payload: ${JSON.stringify(message, null, 1)}`);
-  await socketEndpoint.postToConnection(
-    {
-      ConnectionId: connection, // connectionId of the receiving ws-client
-      Data: JSON.stringify(message),
-    }).promise();
+  try {
+    await socketEndpoint.postToConnection(
+      {
+        ConnectionId: connection, // connectionId of the receiving ws-client
+        Data: JSON.stringify(message),
+      }).promise();
+  } catch (e) {
+    // swallow
+  }
 }
 
 export async function handleDoorMessage(event: SQSEvent) {

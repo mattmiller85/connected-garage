@@ -5,14 +5,18 @@ import {
   View,
   Text,
   Image,
-  TouchableOpacity
+  TouchableOpacity,
+  Dimensions
 } from 'react-native';
 
 import {
   Colors
 } from 'react-native/Libraries/NewAppScreen';
 
+import { format } from 'date-fns'
+
 const apiPrefix = 'https://vft02b5v9c.execute-api.us-east-2.amazonaws.com/dev'
+const socketUrl = 'wss://870olo7mrh.execute-api.us-east-2.amazonaws.com/dev';
 
 const openClose = async (which_door) => {
   await fetch(`${apiPrefix}/message/5447bb99-4bef-4a27-86e3-f2cd6b0b98b0`, {
@@ -24,18 +28,32 @@ const openClose = async (which_door) => {
     body: JSON.stringify({
       message_type: 'toggle',
       payload: { which_door }
-    }) 
+    })
   });
   console.log('Toggling door.');
 }
+
+const closedIcon = require(`./images/door-closed.png`);
+const openIcon = require(`./images/door-open.png`);
 
 class App extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      doorState: {}
+      doorState: {},
+      width: Dimensions.get('window').width,
+      height: Dimensions.get('window').height,
     };
-    this.ws = new WebSocket('ws://host.com/path');
+
+    this.onLayout = this.onLayout.bind(this);
+
+  }
+
+  onLayout(e) {
+    this.setState({
+      width: Dimensions.get('window').width,
+      height: Dimensions.get('window').height,
+    });
   }
 
   async getStatus() {
@@ -51,58 +69,76 @@ class App extends React.Component {
   }
 
   async componentDidMount() {
-    this.setState({ doorState: await this.getStatus() });
+    this.setState({
+      doorState: await this.getStatus(),
+      consoleMessage: `Updated door status: ${format(new Date(), 'MMMM do, yyyy H:mm')}`
+    });
+
+    this.ws = new WebSocket(socketUrl);
     this.ws.onopen = () => {
-     
+
     };
-    
     this.ws.onmessage = (e) => {
+      console.log(JSON.stringify(e, undefined, 1));
       const message = JSON.parse(e.data)
+
       if (message.message_type === 'door_status') {
-        this.setState({ doorState: message.payload });
+        this.setState({
+          doorState: message.payload,
+          consoleMessage: `Updated door status: ${format(new Date(), 'MMMM do, yyyy H:mm')}`
+        });
       }
-      console.log(e.data);
     };
-    
+
     this.ws.onerror = (e) => {
       // an error occurred
-      // console.log(e.message);
+      console.log(e.message);
     };
-    
+
     this.ws.onclose = (e) => {
       // connection closed
-      // console.log(e.code, e.reason);
+      console.log(e.code, e.reason);
     };
   }
 
+
   render() {
-    
-    const { doorState } = this.state;
+
+    const { doorState, consoleMessage, width, height } = this.state;
+
+    const leftIcon = doorState.left?.is_open ? openIcon : closedIcon;
+    const middleIcon = doorState.middle?.is_open ? openIcon : closedIcon;
+    const rightIcon = doorState.right?.is_open ? openIcon : closedIcon;
+
+
+    const doorStateLeftText = doorState.left?.is_open ? 'Opened' : 'Closed';
+    const doorStateMiddleText = doorState.middle?.is_open ? 'Opened' : 'Closed';
+    const doorStateRightText = doorState.right?.is_open ? 'Opened' : 'Closed';
+
 
     return (
       <View
-            contentInsetAdjustmentBehavior="automatic"  
-            style={styles.container}>
-        <View style={styles.body}>
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Connected Garage</Text>
-            <View style={{ ...styles.sectionContainer, flex: 1, flexDirection: 'row', flexShrink: 1, flexWrap: 1 }}>
-              <TouchableOpacity onPressOut={async () => await openClose('left') }>
-                <Image style={{ width: 100, height: 100, marginRight: 5 }} source={require('./images/door-1.png')}></Image>
-                <Text>{doorState.left?.is_open ? 'open': 'closed'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPressOut={async () => await openClose('middle') }>
-                <Image style={{ width: 100, height: 100, marginRight: 5 }} source={require('./images/door-1.png')}></Image>
-              </TouchableOpacity>
-              <TouchableOpacity onPressOut={async () => await openClose('right') }>
-                <Image style={{ width: 100, height: 100 }} source={require('./images/door-1.png')}></Image>
-                
-              </TouchableOpacity>
-            </View>
+        style={{ ...styles.container, width, height }}
+        onLayout={this.onLayout}>
+        <View style={{...styles.sectionContainer }}>
+          <Text style={{ ...styles.sectionTitle }}>Connected Garage</Text>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', flexDirection: width > height ? 'row' : 'column' }}>
+            <TouchableOpacity style={styles.doorbutton} onPressOut={async () => await openClose('left')}>
+              <Image style={styles.doorbuttonimage} source={leftIcon}></Image>
+              <Text>{doorStateLeftText}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.doorbutton} onPressOut={async () => await openClose('middle')}>
+              <Image style={styles.doorbuttonimage} source={middleIcon}></Image>
+              <Text>{doorStateMiddleText}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.doorbutton} onPressOut={async () => await openClose('right')}>
+              <Image style={styles.doorbuttonimage} source={rightIcon}></Image>
+              <Text>{doorStateRightText}</Text>
+            </TouchableOpacity>
           </View>
         </View>
-        <View style={styles.console}>
-          
+        <View style={{...styles.console }}>
+          <Text style={{ height: 30 }}>{consoleMessage || 'Ready'}</Text>
         </View>
       </View>
     );
@@ -112,49 +148,36 @@ class App extends React.Component {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: Colors.lighter,
-    flex: 1,
-    alignItems: "center"
+    flex: 1
   },
   engine: {
     position: 'absolute',
     right: 0,
   },
-  body: {
-    flex: 1
+  doorbuttonimage: {
+    width: 100,
+    height: 100
+  },
+  doorbutton: {
+    alignItems: 'center'
   },
   console: {
-    flex: 1,
-    justifyContent: 'flex-end',
     color: Colors.darker,
     marginBottom: 36,
-    height: 30
+    height: 30,
+    padding: 10
   },
   sectionContainer: {
     marginTop: 32,
-    paddingHorizontal: 24
+    paddingHorizontal: 24,
+    flex: 1,
+    flexDirection: 'column'
   },
   sectionTitle: {
     fontSize: 24,
     fontWeight: '600',
-    color: Colors.black,
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-    color: Colors.dark,
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-  footer: {
-    color: Colors.dark,
-    fontSize: 12,
-    fontWeight: '600',
-    padding: 4,
-    paddingRight: 12,
-    textAlign: 'right',
-  },
+    color: Colors.black
+  }
 });
 
 export default App;

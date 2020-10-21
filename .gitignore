@@ -10,5 +10,5 @@ Cargo.lock
 **/*.rs.bk
 
 .nyc_output
-**/.node_modules/**
+**/node_modules/**
 connected-garage-service/node_modules/**/*
