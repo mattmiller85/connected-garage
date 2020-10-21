@@ -99,9 +99,7 @@ class App extends React.Component {
     };
     this.ws.onmessage = (e) => {
       console.log(JSON.stringify(e, undefined, 1));
-      const message = JSON.parse(e.data)
-
-
+      const message = JSON.parse(e.data);
 
       if (message.message_type === 'door_status') {
         const doorState = message.payload;
@@ -110,11 +108,6 @@ class App extends React.Component {
         buttonState.left.disabled = false;
         buttonState.right.disabled = false;
         buttonState.middle.disabled = false;
-
-        this.setState({
-          buttonState,
-          doorState
-        });
 
         this.setState({
           doorState,
