@@ -34,10 +34,10 @@ const MIDDLE_DOOR_PIN: u8 = 20;
 const RIGHT_DOOR_PIN: u8 = 21;
 const LEFT_TRIGGER_PIN: u8 = 17;
 const LEFT_ECHO_PIN: u8 = 27;
-const MIDDLE_TRIGGER_PIN: u8 = 17;
-const MIDDLE_ECHO_PIN: u8 = 27;
-const RIGHT_TRIGGER_PIN: u8 = 17;
-const RIGHT_ECHO_PIN: u8 = 27;
+const MIDDLE_TRIGGER_PIN: u8 = 26;
+const MIDDLE_ECHO_PIN: u8 = 19;
+const RIGHT_TRIGGER_PIN: u8 = 5;
+const RIGHT_ECHO_PIN: u8 = 6;
 
 #[derive(Deserialize)]
 #[derive(Clone)]
@@ -97,7 +97,7 @@ async fn main() {
   tokio::spawn(async move { 
     loop {
       send_door_state(cloned_client.clone(),q_produce_url_string.to_string(), DoorReq { which_door: "none".to_string() }).await;
-      tokio::time::delay_for(tokio::time::Duration::from_secs(60)).await;
+      tokio::time::delay_for(tokio::time::Duration::from_secs(240)).await;
     }
   });
 
@@ -158,10 +158,10 @@ async fn send_door_state(client: Box<SqsClient>, queue_url: String, _payload: Do
           "is_open": try_get_status(DoorReq { which_door: "left".to_string() })
         },
         "middle": {
-          "is_open": try_get_status(DoorReq { which_door: "middle".to_string() })
+          "is_open": false //try_get_status(DoorReq { which_door: "middle".to_string() })
         },
         "right": {
-          "is_open": try_get_status(DoorReq { which_door: "right".to_string() })
+          "is_open": false //try_get_status(DoorReq { which_door: "right".to_string() })
         }
       }
     }).to_string()),
@@ -281,7 +281,7 @@ fn is_door_open(which_door: String) -> bool {
 
   let mut avg_distance = 0.0;
 
-  for _x in 0..20 {
+  for _x in 0..10 {
     trigger_pin.set_high();
     thread::sleep(Duration::from_micros(10));
     trigger_pin.set_low();

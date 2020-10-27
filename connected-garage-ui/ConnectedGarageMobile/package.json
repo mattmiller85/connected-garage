@@ -10,6 +10,10 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@react-native-community/netinfo": "^5.9.7",
+    "amazon-cognito-identity-js": "^4.5.0",
+    "aws-amplify": "^3.3.4",
+    "aws-amplify-react-native": "^4.2.7",
     "date-fns": "^2.16.1",
     "react": "16.13.1",
     "react-native": "0.63.2"

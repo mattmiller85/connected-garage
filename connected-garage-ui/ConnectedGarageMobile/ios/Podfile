@@ -8,6 +8,10 @@ target 'ConnectedGarageMobile' do
 
   use_react_native!(:path => config["reactNativePath"])
 
+  pod 'react-native-netinfo', :path => '../node_modules/@react-native-community/netinfo'
+
+  pod 'RNAWSCognito', :path => '../node_modules/amazon-cognito-identity-js'
+
   target 'ConnectedGarageMobileTests' do
     inherit! :complete
     # Pods for testing

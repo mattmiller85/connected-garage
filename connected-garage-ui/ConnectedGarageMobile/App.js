@@ -6,7 +6,8 @@ import {
   Text,
   Image,
   TouchableOpacity,
-  Dimensions
+  Dimensions,
+  Button
 } from 'react-native';
 
 import {
@@ -15,8 +16,26 @@ import {
 
 import { format } from 'date-fns'
 
-const apiPrefix = 'https://vft02b5v9c.execute-api.us-east-2.amazonaws.com/dev'
-const socketUrl = 'wss://870olo7mrh.execute-api.us-east-2.amazonaws.com/dev';
+import Amplify, { API, Auth } from "aws-amplify";
+import { withAuthenticator } from "aws-amplify-react-native";
+import getconfig from "./config";
+
+const config = getconfig();
+Amplify.configure({
+  Auth: {
+    region: config.cognito.userPoolRegion,
+    userPoolId: config.cognito.userPoolId,
+    userPoolWebClientId: config.cognito.userPoolWebClientId,
+    identityPoolId: config.cognito.identityPoolID,
+  },
+  API: {
+    endpoints: config.apis,
+  },
+  Analytics: {
+    disabled: true,
+  },
+});
+const socketUrl = config.socketUrl;
 
 const closedIcon = require(`./images/door-closed.png`);
 const openIcon = require(`./images/door-open.png`);
@@ -25,7 +44,11 @@ class App extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      doorState: {},
+      doorState: {
+        left: {},
+        middle: {},
+        right: {}
+      },
       width: Dimensions.get('window').width,
       height: Dimensions.get('window').height,
       buttonState: {
@@ -47,16 +70,11 @@ class App extends React.Component {
   }
 
   async openClose(which_door, event) {
-    await fetch(`${apiPrefix}/message/5447bb99-4bef-4a27-86e3-f2cd6b0b98b0`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
+    await API.post('api', '/message/5447bb99-4bef-4a27-86e3-f2cd6b0b98b0', {
+      body: {
         message_type: 'toggle',
         payload: { which_door }
-      })
+      }
     });
     const { buttonState, doorState } = this.state;
     if (doorState[which_door].is_open) {
@@ -76,26 +94,18 @@ class App extends React.Component {
   }
 
   async getStatus() {
-    const response = await fetch(`${apiPrefix}/status/5447bb99-4bef-4a27-86e3-f2cd6b0b98b0`, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json'
-      }
-    });
-    const payload = await response.json();
+    const response = await API.get('api', '/status/5447bb99-4bef-4a27-86e3-f2cd6b0b98b0');
+    const payload = response;
     return payload;
   }
 
-  async componentDidMount() {
-    this.setState({
-      doorState: await this.getStatus(),
-      consoleMessage: `Updated door status: ${format(new Date(), 'MMMM do, yyyy H:mm')}`
-    });
+  connect() {
 
     this.ws = new WebSocket(socketUrl);
     this.ws.onopen = () => {
-
+      this.setState({
+        consoleMessage: `Connected for updates: ${format(new Date(), 'MMMM do, yyyy H:mm')}`
+      });
     };
     this.ws.onmessage = (e) => {
       console.log(JSON.stringify(e, undefined, 1));
@@ -112,38 +122,72 @@ class App extends React.Component {
         this.setState({
           doorState,
           buttonState,
-          consoleMessage: `Updated door status: ${format(new Date(), 'MMMM do, yyyy H:mm')}`
+          consoleMessage: `Updated door status: ${format(new Date(), 'MMMM do, yyyy H:mm')}`,
+          buttonState
         });
       }
     };
 
-    this.ws.onerror = (e) => {
-      // an error occurred
-      console.log(e.message);
-    };
-
     this.ws.onclose = (e) => {
-      // connection closed
-      console.log(e.code, e.reason);
+      this.setState({
+        consoleMessage: `Connection lost, reconnecting: ${format(new Date(), 'MMMM do, yyyy H:mm')}`
+      });
+      console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
+      setTimeout(() => {
+        this.connect();
+      }, 1000);
+    };
+  
+    this.ws.onerror = (err) => {
+      console.error('Socket encountered error: ', err.message, 'Closing socket');
+      this.ws.close();
     };
   }
 
+  async initialize() {
+    const user = await Auth.currentAuthenticatedUser();
+    const { buttonState } = this.state;
+
+    buttonState.left.disabled = false;
+    buttonState.right.disabled = false;
+    buttonState.middle.disabled = false;
+
+    this.setState({
+      doorState: await this.getStatus(),
+      consoleMessage: `Updated door status: ${format(new Date(), 'MMMM do, yyyy H:mm')}`,
+      username: user.getUsername()
+    });
+
+    this.connect();
+  }
+
+  async componentDidMount() {
+    await this.initialize();
+  }
 
   render() {
 
-    const { doorState, buttonState, consoleMessage, width, height } = this.state;
+    const { doorState, buttonState, consoleMessage, width, height, username } = this.state;
 
+    doorState.middle.unknown = true;
+    doorState.right.unknown = true;
+    const getStateText = (door) => {
+      if (door?.unknown) {
+        return 'Unknown';
+      }
+      return door?.opening ? 'Opening' :
+        door?.closing ? 'Closing' :
+          door?.is_open ? 'Opened' : 'Closed';
+    }
     const leftIcon = doorState.left?.is_open ? openIcon : closedIcon;
-    const middleIcon = doorState.middle?.is_open ? openIcon : closedIcon;
-    const rightIcon = doorState.right?.is_open ? openIcon : closedIcon;
+    // const middleIcon = doorState.middle?.is_open ? openIcon : closedIcon;
+    // const rightIcon = doorState.right?.is_open ? openIcon : closedIcon;
+    const middleIcon = closedIcon;
+    const rightIcon = closedIcon;
 
-
-    const doorStateLeftText = doorState.left?.opening ? 'Opening' :
-      doorState.left?.closing ? 'Closing' :
-        doorState.left?.is_open ? 'Opened' : 'Closed';
-    const doorStateMiddleText = doorState.middle?.is_open ? 'Opened' : 'Closed';
-    const doorStateRightText = doorState.right?.is_open ? 'Opened' : 'Closed';
-
+    const doorStateLeftText = getStateText(doorState.left);
+    const doorStateMiddleText = getStateText(doorState.middle);
+    const doorStateRightText = getStateText(doorState.right);
 
     return (
       <View
@@ -151,6 +195,14 @@ class App extends React.Component {
         onLayout={this.onLayout}>
         <View style={{ ...styles.sectionContainer }}>
           <Text style={{ ...styles.sectionTitle }}>Connected Garage</Text>
+          <View style={{ ...styles.user, width }}>
+            <Text>{username}</Text>
+            <View style={{flexDirection:'row' }}>
+              <Button onPress={async () => await this.initialize() } title="Reload"></Button>
+              <Button onPress={async () => await Auth.signOut()} title="Logout"></Button>
+            </View>
+            
+          </View>
           <View style={{ flex: 1, justifyContent: 'space-evenly', alignItems: 'center', flexDirection: width > height ? 'row' : 'column' }}>
             <TouchableOpacity disabled={buttonState.left.disabled}
               style={{ ...styles.doorbutton, opacity: buttonState.left.disabled ? 0.5 : 1 }}
@@ -215,7 +267,13 @@ const styles = StyleSheet.create({
     color: Colors.black,
     alignItems: 'center',
     marginTop: 20
+  },
+  user: {
+    paddingTop: 5,
+    paddingRight: 5,
+    backgroundColor: '#e1e1e1',
+    alignItems: 'flex-end'
   }
 });
 
-export default App;
+export default withAuthenticator(App);

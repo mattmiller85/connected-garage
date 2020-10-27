@@ -153,8 +153,8 @@ functions:
             parameters:
               paths:
                 buildingId: true
-          # authorizer:
-          #   arn: arn:aws:cognito-idp:us-east-2:609487005418:userpool/us-east-2_nZIkT2Dub
+          authorizer:
+            arn: arn:aws:cognito-idp:us-east-2:609487005418:userpool/us-east-2_nZIkT2Dub
   
   getDoorStatus:
     handler: handler.getDoorState
@@ -167,6 +167,8 @@ functions:
             parameters:
               paths:
                 buildingId: true
+          authorizer:
+            arn: arn:aws:cognito-idp:us-east-2:609487005418:userpool/us-east-2_nZIkT2Dub
           
   getDoorHistory:
     handler: handler.getDoorHistory
@@ -181,6 +183,8 @@ functions:
             parameters:
               paths:
                 limit: true
+          authorizer:
+            arn: arn:aws:cognito-idp:us-east-2:609487005418:userpool/us-east-2_nZIkT2Dub
 
   connectionHandler:
     handler: handler.connectionHandler
