@@ -49,7 +49,8 @@ struct DoorReq {
 struct PinMetaData {
   door_pin: u8,
   status_trigger_pin: u8,
-  status_echo_pin: u8
+  status_echo_pin: u8,
+  open_threshhold_cm: f32
 }
 
 fn get_pin_metadata() -> HashMap<String, PinMetaData>{
@@ -59,16 +60,19 @@ fn get_pin_metadata() -> HashMap<String, PinMetaData>{
     door_pin: LEFT_DOOR_PIN,
     status_echo_pin: LEFT_ECHO_PIN,
     status_trigger_pin: LEFT_TRIGGER_PIN,
+    open_threshhold_cm: 12.0
   });
   pin_meta_data.insert("middle".to_string(), PinMetaData {
     door_pin: MIDDLE_DOOR_PIN,
     status_echo_pin: MIDDLE_ECHO_PIN,
     status_trigger_pin: MIDDLE_TRIGGER_PIN,
+    open_threshhold_cm: 11.5
   });
   pin_meta_data.insert("right".to_string(), PinMetaData {
     door_pin: RIGHT_DOOR_PIN,
     status_echo_pin: RIGHT_ECHO_PIN,
     status_trigger_pin: RIGHT_TRIGGER_PIN,
+    open_threshhold_cm: 8.0
   });
   pin_meta_data
 }
@@ -158,10 +162,10 @@ async fn send_door_state(client: Box<SqsClient>, queue_url: String, _payload: Do
           "is_open": try_get_status(DoorReq { which_door: "left".to_string() })
         },
         "middle": {
-          "is_open": false //try_get_status(DoorReq { which_door: "middle".to_string() })
+          "is_open": try_get_status(DoorReq { which_door: "middle".to_string() })
         },
         "right": {
-          "is_open": false //try_get_status(DoorReq { which_door: "right".to_string() })
+          "is_open": try_get_status(DoorReq { which_door: "right".to_string() })
         }
       }
     }).to_string()),
@@ -177,7 +181,6 @@ async fn send_door_state(client: Box<SqsClient>, queue_url: String, _payload: Do
 }
 
 fn get_aws_profile() -> rusoto_core::credential::ProfileProvider {
-  //rusoto_core::credential::ProfileProvider::with_configuration("/home/pi/.aws/credentials", "cbus-campio-2020")
   let app_settings = get_app_settings();
   let credentials = app_settings.get("aws_credentials_path").unwrap();
   let profile = app_settings.get("aws_profile_name").unwrap();
@@ -272,6 +275,7 @@ fn is_door_open(which_door: String) -> bool {
   let pins = pin_metadata.get(&which_door).unwrap();
   let trigger_pin_num = pins.status_trigger_pin;
   let echo_pin_num = pins.status_echo_pin;
+  let open_threshhold_cm = pins.open_threshhold_cm;
   
   let mut trigger_pin = Gpio::new().unwrap().get(trigger_pin_num).unwrap().into_output();
   let echo_pin = Gpio::new().unwrap().get(echo_pin_num).unwrap().into_input();
@@ -281,7 +285,8 @@ fn is_door_open(which_door: String) -> bool {
 
   let mut avg_distance = 0.0;
 
-  for _x in 0..10 {
+  let mut divisor = 1.0;
+  for _x in 0..20 {
     trigger_pin.set_high();
     thread::sleep(Duration::from_micros(10));
     trigger_pin.set_low();
@@ -300,13 +305,19 @@ fn is_door_open(which_door: String) -> bool {
     // Speed of sound! 343 m/s (767 mph in freedom units)
     // 34300 cm/s
     // 17150 = one way
-    avg_distance += pulse_duration * 17150.0; 
+    let distance = pulse_duration * 17150.0;
+    
+    if distance < 75.0 && distance > 2.0 {
+      // throw out bad readings
+      avg_distance += distance;
+      divisor += 1.0;
+    }
     println!("{}" , avg_distance);
-    thread::sleep(Duration::from_millis(10));
+    thread::sleep(Duration::from_millis(15));
   }
   
-  let distance_cm = avg_distance / 20.0;
+  let distance_cm = avg_distance / (divisor - 1.0);
   println!("cm away: {}" , distance_cm);
 
-  distance_cm > 12.0
+  distance_cm > open_threshhold_cm
 }

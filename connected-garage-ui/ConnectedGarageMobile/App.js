@@ -169,8 +169,6 @@ class App extends React.Component {
 
     const { doorState, buttonState, consoleMessage, width, height, username } = this.state;
 
-    doorState.middle.unknown = true;
-    doorState.right.unknown = true;
     const getStateText = (door) => {
       if (door?.unknown) {
         return 'Unknown';
@@ -180,10 +178,8 @@ class App extends React.Component {
           door?.is_open ? 'Opened' : 'Closed';
     }
     const leftIcon = doorState.left?.is_open ? openIcon : closedIcon;
-    // const middleIcon = doorState.middle?.is_open ? openIcon : closedIcon;
-    // const rightIcon = doorState.right?.is_open ? openIcon : closedIcon;
-    const middleIcon = closedIcon;
-    const rightIcon = closedIcon;
+    const middleIcon = doorState.middle?.is_open ? openIcon : closedIcon;
+    const rightIcon = doorState.right?.is_open ? openIcon : closedIcon;
 
     const doorStateLeftText = getStateText(doorState.left);
     const doorStateMiddleText = getStateText(doorState.middle);
