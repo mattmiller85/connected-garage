@@ -14,6 +14,10 @@ export async function getDoorState(event: APIGatewayProxyEvent,
 
   const response = {
     statusCode: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Credentials': true,
+    },
     body: JSON.stringify(result.Item),
   };
 
@@ -49,6 +53,10 @@ export async function sendDoorMessage(event: APIGatewayProxyEvent,
 
   const response = {
     statusCode: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Credentials': true,
+    },
     body: JSON.stringify({ messageId: qResponse.MessageId }),
   };
 
@@ -97,7 +105,11 @@ export async function handleDoorMessage(event: SQSEvent) {
   }
 
   const response = {
-    statusCode: 200
+    statusCode: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Credentials': true,
+    },
   };
 
   return response;
@@ -127,5 +139,9 @@ export async function connectionHandler(event, context) {
     default:
       break;
   }
-  return { statusCode: 200 };
+  return { statusCode: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Credentials': true,
+    } };
 }
